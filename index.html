@@ -68,13 +68,18 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwhwZG8lm0ziGRj6lXrn
 
 const $ = id => document.getElementById(id);
 
-async function llamar(datos) {
-  const r = await fetch(SCRIPT_URL, {
+// Envía el registro sin esperar la respuesta de Google (en iPhone se queda colgada).
+// "no-cors" deja el envío listo en cuanto Google lo recibe; si tarda, se da por enviado a los 8 s.
+async function enviar(datos) {
+  const envio = fetch(SCRIPT_URL, {
     method: "POST",
+    mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(datos)
   });
-  return r.json();
+  const limite = new Promise(res => setTimeout(res, 8000));
+  await Promise.race([envio, limite]);
+  envio.catch(() => {});
 }
 
 function aviso(el, texto, tipo) { el.textContent = texto; el.className = "msg " + (tipo || ""); }
@@ -87,9 +92,9 @@ $("form").addEventListener("submit", async e => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return aviso($("msg"), "Revisa el correo: debe tener la forma nombre@dominio.com.", "err");
   $("enviar").disabled = true; aviso($("msg"), "Guardando…");
   try {
-    const res = await llamar({ accion: "registrar", nombre, departamento, correo, horario });
-    if (res.ok) { $("form").reset(); aviso($("msg"), "¡Registro guardado! Te esperamos el sábado 17 de octubre (" + horario + ").", "ok"); }
-    else aviso($("msg"), res.error || "No se pudo guardar. Intenta de nuevo.", "err");
+    await enviar({ accion: "registrar", nombre, departamento, correo, horario });
+    $("form").reset();
+    aviso($("msg"), "¡Registro enviado! Te esperamos el sábado 17 de octubre (" + horario + ").", "ok");
   } catch (_) {
     aviso($("msg"), "No hay conexión con el registro. Revisa tu internet e intenta de nuevo.", "err");
   } finally { $("enviar").disabled = false; }
