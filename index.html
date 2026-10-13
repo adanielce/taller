@@ -6,7 +6,6 @@
 <title>Registro Curso-Taller HMNG</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,600;0,800;1,800&family=Source+Sans+3:wght@400;600&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#f7f3f3; --surface:#fff; --fg:#2a1416; --muted:#6e5a5c; --line:#e3d6d7;
@@ -25,17 +24,14 @@ main{max-width:560px;margin:-16px auto 0;padding-inline:16px;padding-block:0 48p
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;display:grid;gap:14px;box-shadow:0 4px 18px rgba(80,10,15,.08)}
 h2{font-family:var(--display);font-size:18px;margin:0}
 label{display:grid;gap:4px;font-weight:600;font-size:14px}
-input{font:inherit;font-weight:400;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:100%}
-input:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+input,select{font:inherit;font-weight:400;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:100%}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .btn{font-family:var(--display);font-weight:800;font-size:17px;background:var(--accent);color:var(--accent-fg);border:0;border-radius:999px;padding:15px 24px;cursor:pointer}
 .btn:disabled{opacity:.6;cursor:wait}
 .sec{font:inherit;font-weight:600;background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:11px 20px;cursor:pointer;justify-self:start}
 .msg{margin:0;font-size:15px}
 .msg.err{color:var(--accent)}
 .msg.ok{color:var(--ok);font-weight:600}
-.admin{border-top:1px solid var(--line);padding-top:20px;display:grid;gap:12px}
-.admin .card{box-shadow:none}
-.row{display:flex;gap:10px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -52,24 +48,18 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--gold);outline-o
     <h2>Registro</h2>
     <label for="nombre">Nombre completo<input id="nombre" autocomplete="name" maxlength="120" required></label>
     <label for="depto">Departamento<input id="depto" maxlength="120" required></label>
+    <label for="horario">Horario
+      <select id="horario" required>
+        <option value="" selected disabled>Elige un horario</option>
+        <option value="Horario 1: 9:00–12:15">Horario 1: 9:00 a 12:15 hrs</option>
+        <option value="Horario 2: 12:30–15:15">Horario 2: 12:30 a 15:15 hrs</option>
+      </select>
+    </label>
     <label for="correo">Correo electrónico<input id="correo" type="email" autocomplete="email" maxlength="120" required></label>
     <p class="msg" id="msg" role="status"></p>
     <button class="btn" type="submit" id="enviar">Registrarme</button>
   </form>
 
-  <section class="admin">
-    <button class="sec" type="button" id="abrirAdmin">Descargar Excel</button>
-    <form class="card" id="login" hidden novalidate>
-      <h2>Acceso para descargar</h2>
-      <label for="usuario">Usuario<input id="usuario" autocomplete="username" required></label>
-      <label for="pass">Contraseña<input id="pass" type="password" autocomplete="current-password" required></label>
-      <p class="msg" id="msgAdmin" role="status"></p>
-      <div class="row">
-        <button class="btn" type="submit" id="bajar">Descargar</button>
-        <button class="sec" type="button" id="cerrarAdmin">Cancelar</button>
-      </div>
-    </form>
-  </section>
 </main>
 
 <script>
@@ -91,41 +81,20 @@ function aviso(el, texto, tipo) { el.textContent = texto; el.className = "msg " 
 
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
-  const nombre = $("nombre").value.trim(), departamento = $("depto").value.trim(), correo = $("correo").value.trim();
-  if (!nombre || !departamento || !correo) return aviso($("msg"), "Llena los tres campos.", "err");
+  const nombre = $("nombre").value.trim(), departamento = $("depto").value.trim(), correo = $("correo").value.trim(), horario = $("horario").value;
+  if (!nombre || !departamento || !correo) return aviso($("msg"), "Llena todos los campos.", "err");
+  if (!horario) return aviso($("msg"), "Elige un horario.", "err");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return aviso($("msg"), "Revisa el correo: debe tener la forma nombre@dominio.com.", "err");
   $("enviar").disabled = true; aviso($("msg"), "Guardando…");
   try {
-    const res = await llamar({ accion: "registrar", nombre, departamento, correo });
-    if (res.ok) { $("form").reset(); aviso($("msg"), "¡Registro guardado! Te esperamos el sábado 17 de octubre.", "ok"); }
+    const res = await llamar({ accion: "registrar", nombre, departamento, correo, horario });
+    if (res.ok) { $("form").reset(); aviso($("msg"), "¡Registro guardado! Te esperamos el sábado 17 de octubre (" + horario + ").", "ok"); }
     else aviso($("msg"), res.error || "No se pudo guardar. Intenta de nuevo.", "err");
   } catch (_) {
     aviso($("msg"), "No hay conexión con el registro. Revisa tu internet e intenta de nuevo.", "err");
   } finally { $("enviar").disabled = false; }
 });
 
-$("abrirAdmin").onclick = () => { $("login").hidden = false; $("abrirAdmin").hidden = true; $("usuario").focus(); };
-$("cerrarAdmin").onclick = () => { $("login").reset(); $("login").hidden = true; $("abrirAdmin").hidden = false; aviso($("msgAdmin"), ""); };
-
-$("login").addEventListener("submit", async e => {
-  e.preventDefault();
-  const usuario = $("usuario").value.trim(), contrasena = $("pass").value;
-  if (!usuario || !contrasena) return aviso($("msgAdmin"), "Escribe usuario y contraseña.", "err");
-  $("bajar").disabled = true; aviso($("msgAdmin"), "Verificando…");
-  try {
-    const res = await llamar({ accion: "descargar", usuario, contrasena });
-    if (!res.ok) return aviso($("msgAdmin"), res.error || "Acceso denegado.", "err");
-    const ws = XLSX.utils.aoa_to_sheet(res.filas);
-    ws["!cols"] = [{ wch: 20 }, { wch: 32 }, { wch: 24 }, { wch: 32 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Registros");
-    XLSX.writeFile(wb, "registro-curso-taller-HMNG.xlsx");
-    aviso($("msgAdmin"), `Descargado: ${Math.max(res.filas.length - 1, 0)} registros.`, "ok");
-    $("pass").value = "";
-  } catch (_) {
-    aviso($("msgAdmin"), "No hay conexión con el registro. Intenta de nuevo.", "err");
-  } finally { $("bajar").disabled = false; }
-});
 </script>
 </body>
 </html>
