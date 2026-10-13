@@ -47,6 +47,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
   <form class="card" id="form" novalidate>
     <h2>Registro</h2>
     <label for="nombre">Nombre completo<input id="nombre" autocomplete="name" maxlength="120" required></label>
+    <label for="profesion">Profesión<input id="profesion" autocomplete="organization-title" maxlength="120" required></label>
     <label for="depto">Departamento<input id="depto" maxlength="120" required></label>
     <label for="horario">Horario
       <select id="horario" required>
@@ -63,43 +64,82 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
 </main>
 
 <script>
-// ⬇⬇ Pega aquí la URL de tu Apps Script (termina en /exec) ⬇⬇
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwhwZG8lm0ziGRj6lXrnenkG3krVeWUzqU5OoCi0dz6r8W39K9AHDWMOQuF3dF6BF_jVA/exec";
+const LIMITE = 50; // registros por horario (el servidor también lo hace cumplir)
 
 const $ = id => document.getElementById(id);
+const clave = h => h.startsWith("Horario 1") ? "h1" : "h2";
+const espera = ms => new Promise(r => setTimeout(r, ms));
+let idRegistro = null; // se conserva si hay que reintentar, para no duplicar
 
 // Envía el registro sin esperar la respuesta de Google (en iPhone se queda colgada).
-// "no-cors" deja el envío listo en cuanto Google lo recibe; si tarda, se da por enviado a los 8 s.
 async function enviar(datos) {
   const envio = fetch(SCRIPT_URL, {
-    method: "POST",
-    mode: "no-cors",
+    method: "POST", mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify(datos)
   });
-  const limite = new Promise(res => setTimeout(res, 8000));
-  await Promise.race([envio, limite]);
   envio.catch(() => {});
+  await Promise.race([envio, espera(8000)]);
+}
+
+async function consultar(params) {
+  const r = await fetch(SCRIPT_URL + "?" + params + "&t=" + Date.now());
+  return r.json();
 }
 
 function aviso(el, texto, tipo) { el.textContent = texto; el.className = "msg " + (tipo || ""); }
 
+// Marca como llenos los horarios que ya tienen 50 registros
+async function actualizarCupos() {
+  try {
+    const c = await Promise.race([consultar("accion=cupos"), espera(8000).then(() => null)]);
+    if (!c || !c.ok) return null;
+    [...$("horario").options].forEach(o => {
+      if (!o.value) return;
+      const lleno = c[clave(o.value)] >= LIMITE;
+      o.disabled = lleno;
+      o.textContent = o.dataset.texto + (lleno ? " (lleno)" : "");
+      if (lleno && o.selected) $("horario").value = "";
+    });
+    return c;
+  } catch (_) { return null; }
+}
+[...$("horario").options].forEach(o => { o.dataset.texto = o.textContent; });
+actualizarCupos();
+
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
-  const nombre = $("nombre").value.trim(), departamento = $("depto").value.trim(), correo = $("correo").value.trim(), horario = $("horario").value;
-  if (!nombre || !departamento || !correo) return aviso($("msg"), "Llena todos los campos.", "err");
+  const nombre = $("nombre").value.trim(), profesion = $("profesion").value.trim(), departamento = $("depto").value.trim(),
+        correo = $("correo").value.trim(), horario = $("horario").value;
+  if (!nombre || !profesion || !departamento || !correo) return aviso($("msg"), "Llena todos los campos.", "err");
   if (!horario) return aviso($("msg"), "Elige un horario.", "err");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) return aviso($("msg"), "Revisa el correo: debe tener la forma nombre@dominio.com.", "err");
   $("enviar").disabled = true; aviso($("msg"), "Guardando…");
   try {
-    await enviar({ accion: "registrar", nombre, departamento, correo, horario });
-    $("form").reset();
-    aviso($("msg"), "¡Registro enviado! Te esperamos el sábado 17 de octubre (" + horario + ").", "ok");
+    const antes = await actualizarCupos();
+    if (antes && antes[clave(horario)] >= LIMITE) return aviso($("msg"), "Ese horario ya se llenó (50 registros). Elige el otro horario.", "err");
+    idRegistro = idRegistro || (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+    await enviar({ accion: "registrar", id: idRegistro, nombre, profesion, departamento, correo, horario });
+    // Confirma que el registro quedó en la hoja
+    let confirmado = false;
+    for (let n = 0; n < 6 && !confirmado; n++) {
+      try { const v = await consultar("accion=verificar&id=" + idRegistro); confirmado = !!(v && v.existe); } catch (_) {}
+      if (!confirmado) await espera(2000);
+    }
+    if (confirmado) {
+      idRegistro = null; $("form").reset();
+      aviso($("msg"), "¡Registro guardado! Te esperamos el sábado 17 de octubre (" + horario + ").", "ok");
+      actualizarCupos();
+    } else {
+      const c = await actualizarCupos();
+      if (c && c[clave(horario)] >= LIMITE) aviso($("msg"), "Ese horario se llenó. Elige el otro horario.", "err");
+      else aviso($("msg"), "No pudimos confirmar tu registro. Revisa tu internet e intenta de nuevo.", "err");
+    }
   } catch (_) {
     aviso($("msg"), "No hay conexión con el registro. Revisa tu internet e intenta de nuevo.", "err");
   } finally { $("enviar").disabled = false; }
 });
-
 </script>
 </body>
 </html>
